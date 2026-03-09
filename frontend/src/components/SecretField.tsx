@@ -12,10 +12,10 @@ function SecretField({ configured }: SecretFieldProps): ReactElement {
   const { t } = useTranslation();
 
   if (configured) {
-    return <Tag icon={<CheckCircleOutlined />} color="success">{t('secret.configured')}</Tag>;
+    return <Tag className="secret-pill secret-pill--configured" icon={<CheckCircleOutlined />}>{t('secret.configured')}</Tag>;
   }
 
-  return <Tag icon={<CloseCircleOutlined />} color="default">{t('secret.notConfigured')}</Tag>;
+  return <Tag className="secret-pill secret-pill--missing" icon={<CloseCircleOutlined />}>{t('secret.notConfigured')}</Tag>;
 }
 
 export default SecretField;

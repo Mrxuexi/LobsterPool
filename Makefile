@@ -1,5 +1,18 @@
 .PHONY: dev dev-backend dev-frontend build build-backend build-frontend lint lint-frontend test test-backend docker-build clean
 
+UNAME_S := $(shell uname -s)
+BACKEND_DEV_GOFLAGS :=
+BACKEND_BUILD_ENV := CGO_ENABLED=0
+BACKEND_BUILD_GOFLAGS :=
+
+ifeq ($(UNAME_S),Darwin)
+# Go 1.21.x can emit Mach-O binaries without LC_UUID on some macOS setups.
+# For local macOS development, force the external linker so dyld accepts the binary.
+BACKEND_DEV_GOFLAGS := -ldflags='-linkmode=external'
+BACKEND_BUILD_ENV :=
+BACKEND_BUILD_GOFLAGS := -ldflags='-linkmode=external'
+endif
+
 # Development
 dev:
 	@echo "Starting backend and frontend dev servers..."
@@ -8,7 +21,7 @@ dev:
 	@wait
 
 dev-backend:
-	cd backend && LP_DEV_MODE=true go run ./cmd/server
+	cd backend && LP_DEV_MODE=true go run $(BACKEND_DEV_GOFLAGS) ./cmd/server
 
 dev-frontend:
 	cd frontend && npm run dev
@@ -17,7 +30,7 @@ dev-frontend:
 build: build-frontend build-backend
 
 build-backend:
-	cd backend && CGO_ENABLED=0 go build -o ../bin/lobsterpool ./cmd/server
+	cd backend && $(BACKEND_BUILD_ENV) go build $(BACKEND_BUILD_GOFLAGS) -o ../bin/lobsterpool ./cmd/server
 
 build-frontend:
 	cd frontend && npm run build
