@@ -33,18 +33,12 @@ func TestOpen_RunsMigrationsAndSeed(t *testing.T) {
 		t.Fatalf("expected seed data to be inserted")
 	}
 
-	var (
-		adminRole          string
-		mustChangePassword bool
-	)
-	if err := db.QueryRow("SELECT role, must_change_password FROM users WHERE username = 'admin'").Scan(&adminRole, &mustChangePassword); err != nil {
-		t.Fatalf("failed loading default admin: %v", err)
+	var adminCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM users WHERE role = 'admin'").Scan(&adminCount); err != nil {
+		t.Fatalf("failed counting admins: %v", err)
 	}
-	if adminRole != "admin" {
-		t.Fatalf("expected default admin role, got %q", adminRole)
-	}
-	if !mustChangePassword {
-		t.Fatalf("expected default admin to require password change")
+	if adminCount != 0 {
+		t.Fatalf("expected no bootstrap admin by default, got %d", adminCount)
 	}
 }
 
@@ -67,5 +61,60 @@ func TestMigrate_IsIdempotent(t *testing.T) {
 	}
 	if count != 1 {
 		t.Fatalf("expected exactly one seeded template after re-migrate, got %d", count)
+	}
+}
+
+func TestEnsureBootstrapAdminUser_CreatesAdminWhenExplicitPasswordProvided(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "lobsterpool.db")
+
+	db, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer db.Close()
+
+	if err := EnsureBootstrapAdminUser(db, "bootstrap-admin", "bootstrap-secret"); err != nil {
+		t.Fatalf("EnsureBootstrapAdminUser failed: %v", err)
+	}
+
+	var (
+		username           string
+		role               string
+		maxInstances       int
+		mustChangePassword bool
+	)
+	if err := db.QueryRow("SELECT username, role, max_instances, must_change_password FROM users WHERE role = 'admin'").Scan(
+		&username,
+		&role,
+		&maxInstances,
+		&mustChangePassword,
+	); err != nil {
+		t.Fatalf("failed loading bootstrapped admin: %v", err)
+	}
+
+	if username != "bootstrap-admin" || role != "admin" || maxInstances != 0 || !mustChangePassword {
+		t.Fatalf("unexpected bootstrapped admin state: username=%s role=%s max=%d mustChange=%v", username, role, maxInstances, mustChangePassword)
+	}
+}
+
+func TestEnsureBootstrapAdminUser_NoOpWithoutPassword(t *testing.T) {
+	dbPath := filepath.Join(t.TempDir(), "lobsterpool.db")
+
+	db, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("Open failed: %v", err)
+	}
+	defer db.Close()
+
+	if err := EnsureBootstrapAdminUser(db, "admin", ""); err != nil {
+		t.Fatalf("EnsureBootstrapAdminUser failed: %v", err)
+	}
+
+	var adminCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM users WHERE role = 'admin'").Scan(&adminCount); err != nil {
+		t.Fatalf("failed counting admins: %v", err)
+	}
+	if adminCount != 0 {
+		t.Fatalf("expected no admins without explicit bootstrap password, got %d", adminCount)
 	}
 }

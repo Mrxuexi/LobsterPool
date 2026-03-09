@@ -23,6 +23,10 @@ func setupAuthHandler(t *testing.T) *AuthHandler {
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
+	if err := database.EnsureBootstrapAdminUser(db, "admin", "admin"); err != nil {
+		t.Fatalf("bootstrap admin: %v", err)
+	}
+
 	return NewAuthHandler(models.NewUserStore(db), "test-secret")
 }
 

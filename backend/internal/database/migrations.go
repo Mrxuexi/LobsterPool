@@ -10,7 +10,6 @@ import (
 
 const (
 	defaultAdminUsername = "admin"
-	defaultAdminPassword = "admin"
 )
 
 func Migrate(db *sql.DB) error {
@@ -71,10 +70,6 @@ func Migrate(db *sql.DB) error {
 		return fmt.Errorf("instance-cluster migration failed: %w", err)
 	}
 
-	if err := ensureDefaultAdminUser(db); err != nil {
-		return fmt.Errorf("default admin setup failed: %w", err)
-	}
-
 	if err := seed(db); err != nil {
 		return fmt.Errorf("seed failed: %w", err)
 	}
@@ -129,21 +124,35 @@ func migrateInstanceClusters(db *sql.DB) error {
 	return err
 }
 
-func ensureDefaultAdminUser(db *sql.DB) error {
+func EnsureBootstrapAdminUser(db *sql.DB, username, password string) error {
+	username = strings.TrimSpace(username)
+	password = strings.TrimSpace(password)
+	if username == "" {
+		username = defaultAdminUsername
+	}
+
+	var adminCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM users WHERE role = 'admin'`).Scan(&adminCount); err != nil {
+		return err
+	}
+	if adminCount > 0 {
+		return nil
+	}
+
+	if password == "" {
+		return nil
+	}
+
 	var existingID string
-	err := db.QueryRow(`SELECT id FROM users WHERE username = ?`, defaultAdminUsername).Scan(&existingID)
+	err := db.QueryRow(`SELECT id FROM users WHERE username = ?`, username).Scan(&existingID)
 	switch {
 	case err == nil:
-		_, updateErr := db.Exec(
-			`UPDATE users SET role = 'admin', max_instances = 0 WHERE username = ?`,
-			defaultAdminUsername,
-		)
-		return updateErr
+		return fmt.Errorf("cannot bootstrap admin: username %q already exists", username)
 	case err != sql.ErrNoRows:
 		return err
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(defaultAdminPassword), bcrypt.DefaultCost)
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
 		return err
 	}
@@ -151,7 +160,7 @@ func ensureDefaultAdminUser(db *sql.DB) error {
 	_, err = db.Exec(
 		`INSERT INTO users (id, username, password_hash, role, max_instances, must_change_password) VALUES (?, ?, ?, 'admin', 0, 1)`,
 		"default-admin",
-		defaultAdminUsername,
+		username,
 		string(hashedPassword),
 	)
 	return err
