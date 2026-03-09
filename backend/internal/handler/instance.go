@@ -17,22 +17,21 @@ type InstanceHandler struct {
 	templates *models.TemplateStore
 	users     *models.UserStore
 	provider  provider.Provider
-	namespace string
 }
 
-func NewInstanceHandler(instances *models.InstanceStore, templates *models.TemplateStore, users *models.UserStore, p provider.Provider, namespace string) *InstanceHandler {
+func NewInstanceHandler(instances *models.InstanceStore, templates *models.TemplateStore, users *models.UserStore, p provider.Provider) *InstanceHandler {
 	return &InstanceHandler{
 		instances: instances,
 		templates: templates,
 		users:     users,
 		provider:  p,
-		namespace: namespace,
 	}
 }
 
 type CreateInstanceRequest struct {
 	Name       string `json:"name" binding:"required"`
 	TemplateID string `json:"template_id" binding:"required"`
+	Cluster    string `json:"cluster"`
 	APIKey     string `json:"api_key" binding:"required"`
 	MMBotToken string `json:"mm_bot_token" binding:"required"`
 }
@@ -45,7 +44,7 @@ func resourceName(instanceID string) string {
 	return fmt.Sprintf("claw-%s", instanceID)
 }
 
-func (h *InstanceHandler) newInstance(userID string, req CreateInstanceRequest) *models.Instance {
+func (h *InstanceHandler) newInstance(userID string, req CreateInstanceRequest, cluster provider.ClusterInfo) *models.Instance {
 	instanceID := newInstanceID()
 	name := resourceName(instanceID)
 
@@ -54,11 +53,35 @@ func (h *InstanceHandler) newInstance(userID string, req CreateInstanceRequest) 
 		Name:           req.Name,
 		TemplateID:     req.TemplateID,
 		UserID:         userID,
-		Namespace:      h.namespace,
+		Cluster:        cluster.Name,
+		Namespace:      cluster.Namespace,
 		DeploymentName: name,
 		ServiceName:    name,
 		Status:         "pending",
 	}
+}
+
+func (h *InstanceHandler) resolveCluster(requestedCluster string) (provider.ClusterInfo, bool) {
+	clusters := h.provider.ListClusters()
+	if len(clusters) == 0 {
+		return provider.ClusterInfo{}, false
+	}
+
+	if requestedCluster == "" {
+		for _, cluster := range clusters {
+			if cluster.Default {
+				return cluster, true
+			}
+		}
+		return clusters[0], true
+	}
+
+	for _, cluster := range clusters {
+		if cluster.Name == requestedCluster {
+			return cluster, true
+		}
+	}
+	return provider.ClusterInfo{}, false
 }
 
 func (h *InstanceHandler) refreshInstanceStatus(inst *models.Instance) {
@@ -81,6 +104,12 @@ func (h *InstanceHandler) Create(c *gin.Context) {
 	var req CreateInstanceRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respondError(c, http.StatusBadRequest, "invalid request: name, template_id, api_key, and mm_bot_token are required")
+		return
+	}
+
+	cluster, ok := h.resolveCluster(req.Cluster)
+	if !ok {
+		respondError(c, http.StatusBadRequest, "cluster not found")
 		return
 	}
 
@@ -116,7 +145,7 @@ func (h *InstanceHandler) Create(c *gin.Context) {
 		return
 	}
 
-	inst := h.newInstance(userID, req)
+	inst := h.newInstance(userID, req, cluster)
 
 	if err := h.provider.CreateInstance(&provider.CreateInstanceInput{
 		Instance:   inst,

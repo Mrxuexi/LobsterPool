@@ -38,6 +38,7 @@ func Migrate(db *sql.DB) error {
 			name TEXT NOT NULL,
 			template_id TEXT NOT NULL,
 			user_id TEXT NOT NULL DEFAULT '',
+			cluster TEXT NOT NULL DEFAULT '',
 			namespace TEXT NOT NULL,
 			deployment_name TEXT NOT NULL,
 			service_name TEXT NOT NULL,
@@ -64,6 +65,10 @@ func Migrate(db *sql.DB) error {
 
 	if err := migrateMaxInstances(db); err != nil {
 		return fmt.Errorf("max-instances migration failed: %w", err)
+	}
+
+	if err := migrateInstanceClusters(db); err != nil {
+		return fmt.Errorf("instance-cluster migration failed: %w", err)
 	}
 
 	if err := ensureDefaultAdminUser(db); err != nil {
@@ -110,6 +115,17 @@ func migrateMaxInstances(db *sql.DB) error {
 	}
 
 	_, err := db.Exec(`UPDATE users SET max_instances = 1 WHERE max_instances IS NULL OR max_instances < 0`)
+	return err
+}
+
+func migrateInstanceClusters(db *sql.DB) error {
+	if _, err := db.Exec(`ALTER TABLE instances ADD COLUMN cluster TEXT NOT NULL DEFAULT ''`); err != nil {
+		if !strings.Contains(strings.ToLower(err.Error()), "duplicate column name") {
+			return err
+		}
+	}
+
+	_, err := db.Exec(`UPDATE instances SET cluster = '' WHERE cluster IS NULL`)
 	return err
 }
 

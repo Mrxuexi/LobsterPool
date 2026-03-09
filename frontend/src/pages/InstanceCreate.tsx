@@ -7,9 +7,9 @@ import type { ReactElement } from 'react';
 import { useEffect, useEffectEvent, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
-import { createInstance, listInstances, listTemplates } from '../api/client';
+import { createInstance, listClusters, listInstances, listTemplates } from '../api/client';
 import { useAuth } from '../contexts/AuthContext';
-import type { ClawTemplate, CreateInstanceRequest } from '../types';
+import type { ClawTemplate, ClusterTarget, CreateInstanceRequest } from '../types';
 
 const SERVER_ERROR_MESSAGE_KEYS: Record<string, string> = {
   'instance limit reached': 'instance.limitReached',
@@ -25,6 +25,7 @@ interface ApiErrorLike {
 
 function InstanceCreate(): ReactElement {
   const [templates, setTemplates] = useState<ClawTemplate[]>([]);
+  const [clusters, setClusters] = useState<ClusterTarget[]>([]);
   const [instanceCount, setInstanceCount] = useState(0);
   const [submitting, setSubmitting] = useState(false);
   const [templatesLoading, setTemplatesLoading] = useState(true);
@@ -33,13 +34,19 @@ function InstanceCreate(): ReactElement {
   const { t } = useTranslation();
   const { user } = useAuth();
   const selectedTemplateId = Form.useWatch('template_id', form) as string | undefined;
+  const selectedClusterName = Form.useWatch('cluster', form) as string | undefined;
   const selectedTemplate = templates.find((template) => template.id === selectedTemplateId);
+  const selectedCluster = clusters.find((cluster) => cluster.name === selectedClusterName);
   const maxInstances = user?.max_instances ?? 0;
   const limitReached = maxInstances > 0 && instanceCount >= maxInstances;
 
   const templateOptions = templates.map((tpl) => ({
     value: tpl.id,
     label: `${tpl.name} (${tpl.image}:${tpl.version})`,
+  }));
+  const clusterOptions = clusters.map((cluster) => ({
+    value: cluster.name,
+    label: `${cluster.display_name} (${cluster.namespace})`,
   }));
 
   function translateServerError(msg?: string): string | undefined {
@@ -82,8 +89,9 @@ function InstanceCreate(): ReactElement {
 
   const loadData = useEffectEvent(async (): Promise<void> => {
     setTemplatesLoading(true);
-    const [templateResult, instanceResult] = await Promise.allSettled([
+    const [templateResult, clusterResult, instanceResult] = await Promise.allSettled([
       listTemplates(),
+      listClusters(),
       listInstances(),
     ]);
 
@@ -91,6 +99,16 @@ function InstanceCreate(): ReactElement {
       setTemplates(templateResult.value);
     } else {
       message.error(t('instance.templateLoadFailed'));
+    }
+
+    if (clusterResult.status === 'fulfilled') {
+      setClusters(clusterResult.value);
+      const defaultCluster = clusterResult.value.find((cluster) => cluster.default) ?? clusterResult.value[0];
+      if (defaultCluster && !form.getFieldValue('cluster')) {
+        form.setFieldValue('cluster', defaultCluster.name);
+      }
+    } else {
+      message.error(t('instance.clusterLoadFailed'));
     }
 
     if (instanceResult.status === 'fulfilled') {
@@ -193,6 +211,18 @@ function InstanceCreate(): ReactElement {
               </span>
             </div>
             <div className="meta-pill">
+              <span className="meta-pill-label">{t('instance.cluster')}</span>
+              <span className="meta-pill-value">
+                {selectedCluster ? selectedCluster.display_name : t('instance.clusterEmpty')}
+              </span>
+            </div>
+            <div className="meta-pill">
+              <span className="meta-pill-label">{t('instance.namespace')}</span>
+              <span className="meta-pill-value">
+                {selectedCluster ? selectedCluster.namespace : '—'}
+              </span>
+            </div>
+            <div className="meta-pill">
               <span className="meta-pill-label">{t('instance.instanceQuota')}</span>
               <span className="meta-pill-value">
                 {maxInstances > 0
@@ -234,27 +264,38 @@ function InstanceCreate(): ReactElement {
 
           <Form form={form} layout="vertical" onFinish={onFinish}>
             <Form.Item name="name" label={t('instance.nameLabel')} rules={[{ required: true, message: t('instance.nameRequired') }]}>
-              <Input autoComplete="off" placeholder={t('instance.namePlaceholder')} />
+              <Input data-testid="instance-name" autoComplete="off" placeholder={t('instance.namePlaceholder')} />
             </Form.Item>
 
             <Form.Item name="template_id" label={t('instance.templateLabel')} rules={[{ required: true, message: t('instance.templateRequired') }]}>
               <Select
+                data-testid="instance-template"
                 placeholder={t('instance.templatePlaceholder')}
                 options={templateOptions}
                 loading={templatesLoading}
               />
             </Form.Item>
 
+            <Form.Item name="cluster" label={t('instance.clusterLabel')} rules={[{ required: true, message: t('instance.clusterRequired') }]}>
+              <Select
+                data-testid="instance-cluster"
+                placeholder={t('instance.clusterPlaceholder')}
+                options={clusterOptions}
+                loading={templatesLoading}
+              />
+            </Form.Item>
+
             <Form.Item name="api_key" label={t('instance.apiKeyLabel')} rules={[{ required: true, message: t('instance.apiKeyRequired') }]}>
-              <Input.Password placeholder={t('instance.apiKeyPlaceholder')} />
+              <Input.Password data-testid="instance-api-key" placeholder={t('instance.apiKeyPlaceholder')} />
             </Form.Item>
 
             <Form.Item name="mm_bot_token" label={t('instance.botTokenLabel')} rules={[{ required: true, message: t('instance.botTokenRequired') }]}>
-              <Input.Password placeholder={t('instance.botTokenPlaceholder')} />
+              <Input.Password data-testid="instance-bot-token" placeholder={t('instance.botTokenPlaceholder')} />
             </Form.Item>
 
             <Form.Item>
               <Button
+                data-testid="instance-submit"
                 className="accent-button"
                 type="primary"
                 htmlType="submit"

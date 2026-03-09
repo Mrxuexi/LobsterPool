@@ -18,6 +18,7 @@ type fakeProvider struct {
 	createErr   error
 	deleteErr   error
 	status      *provider.InstanceStatus
+	clusters    []provider.ClusterInfo
 	createCalls int
 	deleteCalls int
 	lastInput   *provider.CreateInstanceInput
@@ -41,6 +42,20 @@ func (f *fakeProvider) GetInstanceStatus(instance *models.Instance) (*provider.I
 	return &provider.InstanceStatus{Status: "pending", Endpoint: ""}, nil
 }
 
+func (f *fakeProvider) ListClusters() []provider.ClusterInfo {
+	if len(f.clusters) > 0 {
+		return f.clusters
+	}
+	return []provider.ClusterInfo{
+		{
+			Name:        "test-cluster",
+			DisplayName: "Test Cluster",
+			Namespace:   "test-ns",
+			Default:     true,
+		},
+	}
+}
+
 func setupInstanceHandler(t *testing.T, withUser bool, p provider.Provider) (*gin.Engine, *models.InstanceStore, *models.UserStore) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
@@ -54,7 +69,7 @@ func setupInstanceHandler(t *testing.T, withUser bool, p provider.Provider) (*gi
 	instStore := models.NewInstanceStore(db)
 	tmplStore := models.NewTemplateStore(db)
 	userStore := models.NewUserStore(db)
-	h := NewInstanceHandler(instStore, tmplStore, userStore, p, "test-ns")
+	h := NewInstanceHandler(instStore, tmplStore, userStore, p)
 
 	if withUser {
 		if err := userStore.Create(&models.User{
@@ -130,6 +145,9 @@ func TestInstanceHandler_CreateSuccess(t *testing.T) {
 	if instances[0].Status != "running" || instances[0].Endpoint != "http://svc" {
 		t.Fatalf("unexpected stored status: %+v", instances[0])
 	}
+	if instances[0].Cluster != "test-cluster" || instances[0].Namespace != "test-ns" {
+		t.Fatalf("unexpected stored routing info: %+v", instances[0])
+	}
 }
 
 func TestInstanceHandler_CreateLimitReached(t *testing.T) {
@@ -141,6 +159,7 @@ func TestInstanceHandler_CreateLimitReached(t *testing.T) {
 		Name:           "Existing",
 		TemplateID:     "openclaw-mm",
 		UserID:         "user-1",
+		Cluster:        "test-cluster",
 		Namespace:      "test-ns",
 		DeploymentName: "claw-inst-existing",
 		ServiceName:    "claw-inst-existing",
@@ -172,6 +191,7 @@ func TestInstanceHandler_DeleteSuccess(t *testing.T) {
 		Name:           "to-delete",
 		TemplateID:     "openclaw-mm",
 		UserID:         "user-1",
+		Cluster:        "test-cluster",
 		Namespace:      "test-ns",
 		DeploymentName: "claw-inst-delete",
 		ServiceName:    "claw-inst-delete",
@@ -193,5 +213,32 @@ func TestInstanceHandler_DeleteSuccess(t *testing.T) {
 	}
 	if _, err := instStore.GetByUser("inst-delete", "user-1"); err == nil {
 		t.Fatalf("expected instance to be deleted from db")
+	}
+}
+
+func TestInstanceHandler_CreateRejectsUnknownCluster(t *testing.T) {
+	fp := &fakeProvider{
+		clusters: []provider.ClusterInfo{
+			{
+				Name:        "cluster-a",
+				DisplayName: "Cluster A",
+				Namespace:   "ns-a",
+				Default:     true,
+			},
+		},
+	}
+	r, _, _ := setupInstanceHandler(t, true, fp)
+
+	body := []byte(`{"name":"n1","template_id":"openclaw-mm","cluster":"missing","api_key":"k","mm_bot_token":"m"}`)
+	req := httptest.NewRequest(http.MethodPost, "/instances", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", w.Code, w.Body.String())
+	}
+	if fp.createCalls != 0 {
+		t.Fatalf("expected provider create not to be called")
 	}
 }

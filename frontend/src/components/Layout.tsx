@@ -186,7 +186,7 @@ function AppLayout(): ReactElement {
           />
         </div>
 
-        <Button className="accent-button" type="primary" icon={<PlusOutlined />} onClick={() => navigate('/instances/create')}>
+        <Button data-testid="sidebar-create-instance" className="accent-button" type="primary" icon={<PlusOutlined />} onClick={() => navigate('/instances/create')}>
           {t('instance.createButton')}
         </Button>
 
@@ -260,17 +260,17 @@ function AppLayout(): ReactElement {
             label={t('auth.newPasswordLabel')}
             rules={[{ required: true, message: t('auth.newPasswordRequired') }]}
           >
-            <Input.Password placeholder={t('auth.newPasswordPlaceholder')} />
+            <Input.Password data-testid="change-password-new" placeholder={t('auth.newPasswordPlaceholder')} />
           </Form.Item>
           <Form.Item
             name="confirmPassword"
             label={t('auth.confirmPasswordLabel')}
             rules={[{ required: true, message: t('auth.confirmPasswordRequired') }]}
           >
-            <Input.Password placeholder={t('auth.confirmPasswordPlaceholder')} />
+            <Input.Password data-testid="change-password-confirm" placeholder={t('auth.confirmPasswordPlaceholder')} />
           </Form.Item>
           <Form.Item>
-            <Button className="accent-button" type="primary" htmlType="submit" loading={passwordSubmitting} block>
+            <Button data-testid="change-password-submit" className="accent-button" type="primary" htmlType="submit" loading={passwordSubmitting} block>
               {t('auth.changePasswordSubmit')}
             </Button>
           </Form.Item>

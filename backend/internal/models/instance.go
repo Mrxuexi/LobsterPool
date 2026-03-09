@@ -10,6 +10,7 @@ type Instance struct {
 	Name           string    `json:"name"`
 	TemplateID     string    `json:"template_id"`
 	UserID         string    `json:"user_id,omitempty"`
+	Cluster        string    `json:"cluster"`
 	Namespace      string    `json:"namespace"`
 	DeploymentName string    `json:"deployment_name"`
 	ServiceName    string    `json:"service_name"`
@@ -24,6 +25,7 @@ type InstanceSummary struct {
 	TemplateID     string    `json:"template_id"`
 	UserID         string    `json:"user_id"`
 	Username       string    `json:"username"`
+	Cluster        string    `json:"cluster"`
 	Namespace      string    `json:"namespace"`
 	DeploymentName string    `json:"deployment_name"`
 	ServiceName    string    `json:"service_name"`
@@ -42,9 +44,9 @@ func NewInstanceStore(db *sql.DB) *InstanceStore {
 
 func (s *InstanceStore) Create(inst *Instance) error {
 	_, err := s.db.Exec(
-		`INSERT INTO instances (id, name, template_id, user_id, namespace, deployment_name, service_name, status, endpoint)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		inst.ID, inst.Name, inst.TemplateID, inst.UserID, inst.Namespace,
+		`INSERT INTO instances (id, name, template_id, user_id, cluster, namespace, deployment_name, service_name, status, endpoint)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		inst.ID, inst.Name, inst.TemplateID, inst.UserID, inst.Cluster, inst.Namespace,
 		inst.DeploymentName, inst.ServiceName, inst.Status, inst.Endpoint,
 	)
 	return err
@@ -52,7 +54,7 @@ func (s *InstanceStore) Create(inst *Instance) error {
 
 func (s *InstanceStore) ListByUser(userID string) ([]Instance, error) {
 	rows, err := s.db.Query(
-		`SELECT id, name, template_id, user_id, namespace, deployment_name, service_name, status, endpoint, created_at
+		`SELECT id, name, template_id, user_id, cluster, namespace, deployment_name, service_name, status, endpoint, created_at
 		 FROM instances
 		 WHERE user_id = ?
 		 ORDER BY created_at DESC`,
@@ -66,7 +68,7 @@ func (s *InstanceStore) ListByUser(userID string) ([]Instance, error) {
 	var instances []Instance
 	for rows.Next() {
 		var inst Instance
-		if err := rows.Scan(&inst.ID, &inst.Name, &inst.TemplateID, &inst.UserID, &inst.Namespace,
+		if err := rows.Scan(&inst.ID, &inst.Name, &inst.TemplateID, &inst.UserID, &inst.Cluster, &inst.Namespace,
 			&inst.DeploymentName, &inst.ServiceName, &inst.Status, &inst.Endpoint, &inst.CreatedAt); err != nil {
 			return nil, err
 		}
@@ -78,11 +80,11 @@ func (s *InstanceStore) ListByUser(userID string) ([]Instance, error) {
 func (s *InstanceStore) GetByUser(id, userID string) (*Instance, error) {
 	var inst Instance
 	err := s.db.QueryRow(
-		`SELECT id, name, template_id, user_id, namespace, deployment_name, service_name, status, endpoint, created_at
+		`SELECT id, name, template_id, user_id, cluster, namespace, deployment_name, service_name, status, endpoint, created_at
 		 FROM instances
 		 WHERE id = ? AND user_id = ?`,
 		id, userID,
-	).Scan(&inst.ID, &inst.Name, &inst.TemplateID, &inst.UserID, &inst.Namespace,
+	).Scan(&inst.ID, &inst.Name, &inst.TemplateID, &inst.UserID, &inst.Cluster, &inst.Namespace,
 		&inst.DeploymentName, &inst.ServiceName, &inst.Status, &inst.Endpoint, &inst.CreatedAt)
 	if err != nil {
 		return nil, err
@@ -92,6 +94,14 @@ func (s *InstanceStore) GetByUser(id, userID string) (*Instance, error) {
 
 func (s *InstanceStore) UpdateStatus(id, status, endpoint string) error {
 	_, err := s.db.Exec("UPDATE instances SET status = ?, endpoint = ? WHERE id = ?", status, endpoint, id)
+	return err
+}
+
+func (s *InstanceStore) AssignDefaultCluster(cluster string) error {
+	_, err := s.db.Exec(
+		`UPDATE instances SET cluster = ? WHERE cluster IS NULL OR TRIM(cluster) = ''`,
+		cluster,
+	)
 	return err
 }
 
@@ -126,6 +136,7 @@ func (s *InstanceStore) ListSummaries(limit int) ([]InstanceSummary, error) {
 			i.template_id,
 			i.user_id,
 			COALESCE(u.username, '') AS username,
+			i.cluster,
 			i.namespace,
 			i.deployment_name,
 			i.service_name,
@@ -160,6 +171,7 @@ func (s *InstanceStore) ListSummaries(limit int) ([]InstanceSummary, error) {
 			&inst.TemplateID,
 			&inst.UserID,
 			&inst.Username,
+			&inst.Cluster,
 			&inst.Namespace,
 			&inst.DeploymentName,
 			&inst.ServiceName,

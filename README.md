@@ -61,6 +61,25 @@ make dev
 - 前端使用 Vite 开发服务器
 - `make dev` 会自动设置 `LP_DEV_MODE=true`，因此默认使用 Mock Provider，不要求本地有 K8s 集群
 
+### 本地轻量 K8s 自测
+
+如果你要验证真实 Kubernetes Provider，而不是 Mock Provider，可以直接用 `kind` 起一个开发集群：
+
+```bash
+make dev-kind-up
+make dev-backend-k8s
+make dev-frontend
+```
+
+默认约定：
+
+- `kind` 集群名：`lobsterpool-dev`
+- kubeconfig context：`kind-lobsterpool-dev`
+- LobsterPool 默认目标集群名：`kind-dev`
+- 资源命名空间：`lobsterpool-local`
+
+这套流程是轻量开发自测用，不是完整生产 K8s 部署。
+
 ### 单独启动
 
 ```bash
@@ -83,6 +102,20 @@ make test
 make lint
 ```
 
+端到端测试：
+
+```bash
+cd frontend && npm run test:e2e:install
+make test-e2e
+```
+
+E2E 测试会自动：
+
+- 启动一个独立的后端进程
+- 使用 `LP_DEV_MODE=true` 和 Mock Provider
+- 使用独立临时 SQLite 数据库
+- 启动一个带 API 代理的 Vite 开发服务器
+
 ## 默认账号
 
 数据库迁移时会自动创建默认管理员：
@@ -102,12 +135,44 @@ make lint
 | --- | --- | --- |
 | `LP_PORT` | `8080` | API 服务端口 |
 | `LP_DB_PATH` | `lobsterpool.db` | SQLite 数据库路径 |
-| `LP_NAMESPACE` | `lobsterpool` | Kubernetes 资源所在命名空间 |
-| `LP_KUBECONFIG` | `~/.kube/config` | 集群外运行时使用的 kubeconfig |
+| `LP_NAMESPACE` | `lobsterpool` | 默认 Kubernetes 命名空间；多集群条目未显式指定时作为回退值 |
+| `LP_KUBECONFIG` | `~/.kube/config` | 旧单集群模式或多集群条目的 kubeconfig 默认值 |
+| `LP_KUBE_CLUSTERS` | 未设置 | 多集群配置，JSON 数组；每项支持 `name`、`display_name`、`namespace`、`kubeconfig`、`context`、`api_server`、`token`、`ca_file`、`insecure_skip_tls_verify` |
+| `LP_DEFAULT_CLUSTER` | `default` | 默认目标集群名；创建实例时未显式指定集群则落到这里 |
 | `LP_STATIC_DIR` | `./static` | 生产环境前端静态文件目录 |
 | `LP_DEV_MODE` | `false` | 设为 `true` 时使用 Mock Provider |
 | `LP_MOCK_PROVIDER` | 未设置 | 设为 `true` 时强制使用 Mock Provider |
 | `LP_JWT_SECRET` | `lobsterpool-dev-secret-change-me` | JWT 签名密钥 |
+
+### 多集群配置示例
+
+通过 kube-apiserver 纳管多个集群时，推荐配置 `LP_KUBE_CLUSTERS`：
+
+```bash
+export LP_DEFAULT_CLUSTER=kind-dev
+export LP_KUBE_CLUSTERS='[
+  {
+    "name": "kind-dev",
+    "display_name": "Kind Dev",
+    "namespace": "lobsterpool-local",
+    "kubeconfig": "'"$HOME"'/.kube/config",
+    "context": "kind-lobsterpool-dev"
+  },
+  {
+    "name": "remote-prod",
+    "display_name": "Remote Prod",
+    "namespace": "lobsterpool",
+    "api_server": "https://10.0.0.10:6443",
+    "token": "REPLACE_ME",
+    "ca_file": "/etc/lobsterpool/prod-ca.crt"
+  }
+]'
+```
+
+兼容性说明：
+
+- 未设置 `LP_KUBE_CLUSTERS` 时，仍按旧单集群模式运行
+- 已有实例记录会在启动时自动回填到当前 `LP_DEFAULT_CLUSTER`
 
 ## API 概览
 
@@ -129,6 +194,10 @@ make lint
 
 - `GET /templates`
 - `GET /templates/:id`
+
+### 集群
+
+- `GET /clusters`
 
 ### 实例
 

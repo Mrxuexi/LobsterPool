@@ -164,6 +164,7 @@ function Login(): ReactElement {
           activeKey={activeTab}
           onChange={handleTabChange}
           centered
+          data-testid="auth-tabs"
           items={[
             { key: 'login', label: t('auth.login') },
             { key: 'register', label: t('auth.register') },
@@ -175,17 +176,17 @@ function Login(): ReactElement {
             label={t('auth.usernameLabel')}
             rules={[{ required: true, message: t('auth.usernameRequired') }]}
           >
-            <Input prefix={<UserOutlined />} placeholder={t('auth.usernamePlaceholder')} />
+            <Input data-testid="auth-username" prefix={<UserOutlined />} placeholder={t('auth.usernamePlaceholder')} />
           </Form.Item>
           <Form.Item
             name="password"
             label={t('auth.passwordLabel')}
             rules={[{ required: true, message: t('auth.passwordRequired') }]}
           >
-            <Input.Password prefix={<LockOutlined />} placeholder={t('auth.passwordPlaceholder')} />
+            <Input.Password data-testid="auth-password" prefix={<LockOutlined />} placeholder={t('auth.passwordPlaceholder')} />
           </Form.Item>
           <Form.Item>
-            <Button className="accent-button" type="primary" htmlType="submit" loading={loading} block>
+            <Button data-testid="auth-submit" className="accent-button" type="primary" htmlType="submit" loading={loading} block>
               {submitButtonLabel}
             </Button>
           </Form.Item>

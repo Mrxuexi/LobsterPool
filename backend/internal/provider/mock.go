@@ -10,6 +10,7 @@ import (
 
 type MockProvider struct {
 	mu        sync.RWMutex
+	clusters  []ClusterInfo
 	instances map[string]string // id -> status
 }
 
@@ -17,6 +18,14 @@ const mockEndpointPort = 8080
 
 func NewMockProvider() *MockProvider {
 	return &MockProvider{
+		clusters: []ClusterInfo{
+			{
+				Name:        "mock",
+				DisplayName: "Mock Cluster",
+				Namespace:   "lobsterpool-dev",
+				Default:     true,
+			},
+		},
 		instances: make(map[string]string),
 	}
 }
@@ -59,4 +68,10 @@ func (m *MockProvider) GetInstanceStatus(instance *models.Instance) (*InstanceSt
 		Status:   status,
 		Endpoint: endpoint,
 	}, nil
+}
+
+func (m *MockProvider) ListClusters() []ClusterInfo {
+	clusters := make([]ClusterInfo, len(m.clusters))
+	copy(clusters, m.clusters)
+	return clusters
 }

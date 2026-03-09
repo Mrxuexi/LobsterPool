@@ -7,7 +7,10 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "../scripts/e2e-run.sh",
+    "test:e2e:headed": "../scripts/e2e-run.sh --headed",
+    "test:e2e:install": "playwright install chromium"
   },
   "dependencies": {
     "@ant-design/icons": "^6.1.0",
@@ -22,6 +25,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.58.2",
     "@types/node": "^24.10.1",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",

@@ -120,6 +120,7 @@ function InstanceDetail(): ReactElement {
   ];
 
   const infrastructureRows: DetailRow[] = [
+    { label: t('instance.cluster'), value: instance.cluster },
     { label: t('instance.namespace'), value: instance.namespace },
     { label: t('instance.deployment'), value: instance.deployment_name },
     { label: t('instance.service'), value: instance.service_name },
@@ -161,8 +162,12 @@ function InstanceDetail(): ReactElement {
           <Button className="ghost-button" icon={<ArrowLeftOutlined />} onClick={handleBackClick}>
             {t('common.back')}
           </Button>
-          <Popconfirm title={t('instance.confirmDeleteDetail')} onConfirm={handleDelete}>
-            <Button className="danger-button" danger icon={<DeleteOutlined />}>
+          <Popconfirm
+            title={t('instance.confirmDeleteDetail')}
+            onConfirm={handleDelete}
+            okButtonProps={{ 'data-testid': 'instance-detail-delete-confirm' }}
+          >
+            <Button data-testid="instance-detail-delete" className="danger-button" danger icon={<DeleteOutlined />}>
               {t('instance.deleteButton')}
             </Button>
           </Popconfirm>

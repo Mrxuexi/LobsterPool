@@ -5,6 +5,7 @@ import type {
   AdminUserSummary,
   AuthResponse,
   ClawTemplate,
+  ClusterTarget,
   CreateInstanceRequest,
   CreateTemplateRequest,
   Instance,
@@ -92,6 +93,11 @@ export async function listTemplates(): Promise<ClawTemplate[]> {
 
 export async function getTemplate(id: string): Promise<ClawTemplate> {
   const { data } = await api.get<ClawTemplate>(`/templates/${id}`);
+  return data;
+}
+
+export async function listClusters(): Promise<ClusterTarget[]> {
+  const { data } = await api.get<ClusterTarget[]>('/clusters');
   return data;
 }
 

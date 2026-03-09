@@ -13,6 +13,7 @@ export interface Instance {
   name: string;
   template_id: string;
   user_id: string;
+  cluster: string;
   namespace: string;
   deployment_name: string;
   service_name: string;
@@ -24,8 +25,16 @@ export interface Instance {
 export interface CreateInstanceRequest {
   name: string;
   template_id: string;
+  cluster?: string;
   api_key: string;
   mm_bot_token: string;
+}
+
+export interface ClusterTarget {
+  name: string;
+  display_name: string;
+  namespace: string;
+  default: boolean;
 }
 
 export interface User {
@@ -57,6 +66,7 @@ export interface AdminInstanceSummary {
   template_id: string;
   user_id: string;
   username: string;
+  cluster: string;
   namespace: string;
   deployment_name: string;
   service_name: string;

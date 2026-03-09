@@ -131,6 +131,17 @@ function InstanceList(): ReactElement {
       ),
     },
     {
+      title: t('instance.cluster'),
+      dataIndex: 'cluster',
+      key: 'cluster',
+      render: (cluster: string, record: Instance) => (
+        <div className="table-primary">
+          <strong>{cluster}</strong>
+          <span>{record.namespace}</span>
+        </div>
+      ),
+    },
+    {
       title: t('common.status'),
       dataIndex: 'status',
       key: 'status',
@@ -237,6 +248,10 @@ function InstanceList(): ReactElement {
                   <div className="meta-pill">
                     <span className="meta-pill-label">{t('instance.template')}</span>
                     <span className="meta-pill-value">{instance.template_id}</span>
+                  </div>
+                  <div className="meta-pill">
+                    <span className="meta-pill-label">{t('instance.cluster')}</span>
+                    <span className="meta-pill-value">{instance.cluster}</span>
                   </div>
                   <div className="meta-pill">
                     <span className="meta-pill-label">{t('instance.endpoint')}</span>

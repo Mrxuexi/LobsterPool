@@ -268,6 +268,17 @@ function AdminDashboard(): ReactElement {
       key: 'template_id',
     },
     {
+      title: t('instance.cluster'),
+      dataIndex: 'cluster',
+      key: 'cluster',
+      render: (cluster: string, record: AdminInstanceSummary) => (
+        <div className="table-primary">
+          <strong>{cluster}</strong>
+          <span>{record.namespace}</span>
+        </div>
+      ),
+    },
+    {
       title: t('common.status'),
       dataIndex: 'status',
       key: 'status',
@@ -376,35 +387,36 @@ function AdminDashboard(): ReactElement {
                   name="id"
                   rules={[{ required: true, message: t('admin.templateIdRequired') }]}
                 >
-                  <Input placeholder="openclaw-mm-v2" />
+                  <Input data-testid="template-id" placeholder="openclaw-mm-v2" />
                 </Form.Item>
                 <Form.Item
                   label={t('common.name')}
                   name="name"
                   rules={[{ required: true, message: t('admin.templateNameRequired') }]}
                 >
-                  <Input placeholder={t('admin.templateNamePlaceholder')} />
+                  <Input data-testid="template-name" placeholder={t('admin.templateNamePlaceholder')} />
                 </Form.Item>
                 <Form.Item label={t('template.description')} name="description">
-                  <Input.TextArea rows={3} placeholder={t('admin.templateDescriptionPlaceholder')} />
+                  <Input.TextArea data-testid="template-description" rows={3} placeholder={t('admin.templateDescriptionPlaceholder')} />
                 </Form.Item>
                 <Form.Item
                   label={t('template.image')}
                   name="image"
                   rules={[{ required: true, message: t('admin.templateImageRequired') }]}
                 >
-                  <Input placeholder="registry.company.com/openclaw/mm-bot" />
+                  <Input data-testid="template-image" placeholder="registry.company.com/openclaw/mm-bot" />
                 </Form.Item>
                 <div className="admin-form-split">
                   <Form.Item label={t('template.version')} name="version">
-                    <Input placeholder="latest" />
+                    <Input data-testid="template-version" placeholder="latest" />
                   </Form.Item>
                   <Form.Item label={t('template.port')} name="default_port">
-                    <InputNumber min={1} max={65535} style={{ width: '100%' }} placeholder="8080" />
+                    <InputNumber data-testid="template-port" min={1} max={65535} style={{ width: '100%' }} placeholder="8080" />
                   </Form.Item>
                 </div>
                 <Form.Item>
                   <Button
+                    data-testid="template-submit"
                     className="accent-button"
                     type="primary"
                     htmlType="submit"

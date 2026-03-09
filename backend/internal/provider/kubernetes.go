@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -17,16 +18,18 @@ import (
 )
 
 type KubernetesProvider struct {
-	client    kubernetes.Interface
-	namespace string
+	clusters       map[string]*clusterClient
+	clusterOrder   []string
+	defaultCluster string
 }
 
-func NewKubernetesProvider(kubeconfig, namespace string) (*KubernetesProvider, error) {
-	var config *rest.Config
-	var err error
+type clusterClient struct {
+	info   ClusterInfo
+	client kubernetes.Interface
+}
 
-	// Try in-cluster config first, fall back to kubeconfig
-	config, err = rest.InClusterConfig()
+func NewLegacyKubernetesProvider(kubeconfig, namespace, defaultCluster string) (*KubernetesProvider, error) {
+	config, err := rest.InClusterConfig()
 	if err != nil {
 		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
 		if err != nil {
@@ -40,9 +43,100 @@ func NewKubernetesProvider(kubeconfig, namespace string) (*KubernetesProvider, e
 	}
 
 	return &KubernetesProvider{
-		client:    clientset,
-		namespace: namespace,
+		clusters: map[string]*clusterClient{
+			defaultCluster: {
+				info: ClusterInfo{
+					Name:        defaultCluster,
+					DisplayName: defaultCluster,
+					Namespace:   namespace,
+					Default:     true,
+				},
+				client: clientset,
+			},
+		},
+		clusterOrder:   []string{defaultCluster},
+		defaultCluster: defaultCluster,
 	}, nil
+}
+
+func NewKubernetesProvider(clusters []ClusterConfig, defaultCluster string) (*KubernetesProvider, error) {
+	if len(clusters) == 0 {
+		return nil, fmt.Errorf("no kubernetes clusters configured")
+	}
+
+	provider := &KubernetesProvider{
+		clusters:       make(map[string]*clusterClient, len(clusters)),
+		clusterOrder:   make([]string, 0, len(clusters)),
+		defaultCluster: defaultCluster,
+	}
+
+	for _, cluster := range clusters {
+		restConfig, err := buildClusterRESTConfig(cluster)
+		if err != nil {
+			return nil, fmt.Errorf("build cluster %q config: %w", cluster.Name, err)
+		}
+
+		clientset, err := kubernetes.NewForConfig(restConfig)
+		if err != nil {
+			return nil, fmt.Errorf("create cluster %q client: %w", cluster.Name, err)
+		}
+
+		provider.clusters[cluster.Name] = &clusterClient{
+			info: ClusterInfo{
+				Name:        cluster.Name,
+				DisplayName: cluster.DisplayName,
+				Namespace:   cluster.Namespace,
+				Default:     cluster.Name == defaultCluster,
+			},
+			client: clientset,
+		}
+		provider.clusterOrder = append(provider.clusterOrder, cluster.Name)
+	}
+
+	sort.Strings(provider.clusterOrder)
+	return provider, nil
+}
+
+func buildClusterRESTConfig(cluster ClusterConfig) (*rest.Config, error) {
+	if cluster.APIServer != "" {
+		return &rest.Config{
+			Host:        cluster.APIServer,
+			BearerToken: cluster.Token,
+			TLSClientConfig: rest.TLSClientConfig{
+				CAFile:   cluster.CAFile,
+				Insecure: cluster.InsecureSkipTLSVerify,
+			},
+		}, nil
+	}
+
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if cluster.Kubeconfig != "" {
+		loadingRules.ExplicitPath = cluster.Kubeconfig
+	}
+
+	overrides := &clientcmd.ConfigOverrides{}
+	if cluster.Context != "" {
+		overrides.CurrentContext = cluster.Context
+	}
+
+	config, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, overrides).ClientConfig()
+	if err != nil {
+		return nil, fmt.Errorf("load kubeconfig: %w", err)
+	}
+	return config, nil
+}
+
+func (k *KubernetesProvider) clusterForInstance(instance *models.Instance) (*clusterClient, error) {
+	clusterName := instance.Cluster
+	if clusterName == "" {
+		clusterName = k.defaultCluster
+	}
+
+	cluster, ok := k.clusters[clusterName]
+	if !ok {
+		return nil, fmt.Errorf("cluster %q is not configured", clusterName)
+	}
+	return cluster, nil
 }
 
 func (k *KubernetesProvider) CreateInstance(input *CreateInstanceInput) error {
@@ -50,12 +144,20 @@ func (k *KubernetesProvider) CreateInstance(input *CreateInstanceInput) error {
 	inst := input.Instance
 	tmpl := input.Template
 	resourceName := inst.DeploymentName // claw-{id}
+	cluster, err := k.clusterForInstance(inst)
+	if err != nil {
+		return err
+	}
+	namespace := inst.Namespace
+	if namespace == "" {
+		namespace = cluster.info.Namespace
+	}
 
 	// 1. Create Secret
 	secret := &corev1.Secret{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      resourceName,
-			Namespace: k.namespace,
+			Namespace: namespace,
 			Labels:    k.labels(inst.ID),
 		},
 		StringData: map[string]string{
@@ -63,17 +165,17 @@ func (k *KubernetesProvider) CreateInstance(input *CreateInstanceInput) error {
 			"mm_token": input.MMBotToken,
 		},
 	}
-	if _, err := k.client.CoreV1().Secrets(k.namespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
+	if _, err := cluster.client.CoreV1().Secrets(namespace).Create(ctx, secret, metav1.CreateOptions{}); err != nil {
 		return fmt.Errorf("create secret: %w", err)
 	}
-	log.Printf("[K8s] Created Secret %s/%s", k.namespace, resourceName)
+	log.Printf("[K8s] Created Secret %s/%s on cluster %s", namespace, resourceName, cluster.info.Name)
 
 	// 2. Create Deployment
 	replicas := int32(1)
 	deployment := &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      resourceName,
-			Namespace: k.namespace,
+			Namespace: namespace,
 			Labels:    k.labels(inst.ID),
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -119,16 +221,16 @@ func (k *KubernetesProvider) CreateInstance(input *CreateInstanceInput) error {
 			},
 		},
 	}
-	if _, err := k.client.AppsV1().Deployments(k.namespace).Create(ctx, deployment, metav1.CreateOptions{}); err != nil {
+	if _, err := cluster.client.AppsV1().Deployments(namespace).Create(ctx, deployment, metav1.CreateOptions{}); err != nil {
 		return fmt.Errorf("create deployment: %w", err)
 	}
-	log.Printf("[K8s] Created Deployment %s/%s", k.namespace, resourceName)
+	log.Printf("[K8s] Created Deployment %s/%s on cluster %s", namespace, resourceName, cluster.info.Name)
 
 	// 3. Create Service
 	service := &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      resourceName,
-			Namespace: k.namespace,
+			Namespace: namespace,
 			Labels:    k.labels(inst.ID),
 		},
 		Spec: corev1.ServiceSpec{
@@ -143,10 +245,10 @@ func (k *KubernetesProvider) CreateInstance(input *CreateInstanceInput) error {
 			Type: corev1.ServiceTypeClusterIP,
 		},
 	}
-	if _, err := k.client.CoreV1().Services(k.namespace).Create(ctx, service, metav1.CreateOptions{}); err != nil {
+	if _, err := cluster.client.CoreV1().Services(namespace).Create(ctx, service, metav1.CreateOptions{}); err != nil {
 		return fmt.Errorf("create service: %w", err)
 	}
-	log.Printf("[K8s] Created Service %s/%s", k.namespace, resourceName)
+	log.Printf("[K8s] Created Service %s/%s on cluster %s", namespace, resourceName, cluster.info.Name)
 
 	return nil
 }
@@ -154,27 +256,43 @@ func (k *KubernetesProvider) CreateInstance(input *CreateInstanceInput) error {
 func (k *KubernetesProvider) DeleteInstance(instance *models.Instance) error {
 	ctx := context.Background()
 	resourceName := instance.DeploymentName
+	cluster, err := k.clusterForInstance(instance)
+	if err != nil {
+		return err
+	}
+	namespace := instance.Namespace
+	if namespace == "" {
+		namespace = cluster.info.Namespace
+	}
 
 	// Delete in reverse order: Service, Deployment, Secret
-	if err := k.client.CoreV1().Services(k.namespace).Delete(ctx, resourceName, metav1.DeleteOptions{}); err != nil {
+	if err := cluster.client.CoreV1().Services(namespace).Delete(ctx, resourceName, metav1.DeleteOptions{}); err != nil {
 		log.Printf("[K8s] Warning: delete service %s: %v", resourceName, err)
 	}
-	if err := k.client.AppsV1().Deployments(k.namespace).Delete(ctx, resourceName, metav1.DeleteOptions{}); err != nil {
+	if err := cluster.client.AppsV1().Deployments(namespace).Delete(ctx, resourceName, metav1.DeleteOptions{}); err != nil {
 		log.Printf("[K8s] Warning: delete deployment %s: %v", resourceName, err)
 	}
-	if err := k.client.CoreV1().Secrets(k.namespace).Delete(ctx, resourceName, metav1.DeleteOptions{}); err != nil {
+	if err := cluster.client.CoreV1().Secrets(namespace).Delete(ctx, resourceName, metav1.DeleteOptions{}); err != nil {
 		log.Printf("[K8s] Warning: delete secret %s: %v", resourceName, err)
 	}
 
-	log.Printf("[K8s] Deleted resources for instance %s", instance.ID)
+	log.Printf("[K8s] Deleted resources for instance %s on cluster %s", instance.ID, cluster.info.Name)
 	return nil
 }
 
 func (k *KubernetesProvider) GetInstanceStatus(instance *models.Instance) (*InstanceStatus, error) {
 	ctx := context.Background()
 	resourceName := instance.DeploymentName
+	cluster, err := k.clusterForInstance(instance)
+	if err != nil {
+		return nil, err
+	}
+	namespace := instance.Namespace
+	if namespace == "" {
+		namespace = cluster.info.Namespace
+	}
 
-	deployment, err := k.client.AppsV1().Deployments(k.namespace).Get(ctx, resourceName, metav1.GetOptions{})
+	deployment, err := cluster.client.AppsV1().Deployments(namespace).Get(ctx, resourceName, metav1.GetOptions{})
 	if err != nil {
 		return &InstanceStatus{Status: "not_found"}, nil
 	}
@@ -187,7 +305,7 @@ func (k *KubernetesProvider) GetInstanceStatus(instance *models.Instance) (*Inst
 	}
 
 	// Check for crash/error
-	pods, err := k.client.CoreV1().Pods(k.namespace).List(ctx, metav1.ListOptions{
+	pods, err := cluster.client.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{
 		LabelSelector: fmt.Sprintf("lobsterpool.io/instance=%s", instance.ID),
 	})
 	if err == nil && len(pods.Items) > 0 {
@@ -198,12 +316,20 @@ func (k *KubernetesProvider) GetInstanceStatus(instance *models.Instance) (*Inst
 		}
 	}
 
-	endpoint := fmt.Sprintf("http://%s.%s.svc.cluster.local", resourceName, k.namespace)
+	endpoint := fmt.Sprintf("http://%s.%s.svc.cluster.local", resourceName, namespace)
 
 	return &InstanceStatus{
 		Status:   status,
 		Endpoint: endpoint,
 	}, nil
+}
+
+func (k *KubernetesProvider) ListClusters() []ClusterInfo {
+	clusters := make([]ClusterInfo, 0, len(k.clusterOrder))
+	for _, name := range k.clusterOrder {
+		clusters = append(clusters, k.clusters[name].info)
+	}
+	return clusters
 }
 
 func (k *KubernetesProvider) labels(instanceID string) map[string]string {

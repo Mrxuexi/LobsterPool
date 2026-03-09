@@ -13,6 +13,7 @@ type Handlers struct {
 	Admin    *handler.AdminHandler
 	Template *handler.TemplateHandler
 	Instance *handler.InstanceHandler
+	Cluster  *handler.ClusterHandler
 }
 
 func registerAuthRoutes(api *gin.RouterGroup, h *Handlers, jwtSecret string, userStore *models.UserStore) {
@@ -29,6 +30,12 @@ func registerTemplateRoutes(api *gin.RouterGroup, h *Handlers, authRequired gin.
 	templates.Use(authRequired)
 	templates.GET("", h.Template.List)
 	templates.GET("/:id", h.Template.Get)
+}
+
+func registerClusterRoutes(api *gin.RouterGroup, h *Handlers, authRequired gin.HandlerFunc) {
+	clusters := api.Group("/clusters")
+	clusters.Use(authRequired)
+	clusters.GET("", h.Cluster.List)
 }
 
 func registerInstanceRoutes(api *gin.RouterGroup, h *Handlers, authRequired gin.HandlerFunc) {
@@ -64,6 +71,7 @@ func Setup(h *Handlers, jwtSecret string, userStore *models.UserStore) *gin.Engi
 
 	authRequired := middleware.Auth(jwtSecret, userStore)
 	registerTemplateRoutes(api, h, authRequired)
+	registerClusterRoutes(api, h, authRequired)
 	registerInstanceRoutes(api, h, authRequired)
 	registerAdminRoutes(api, h, authRequired)
 

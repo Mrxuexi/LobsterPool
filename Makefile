@@ -1,9 +1,10 @@
-.PHONY: dev dev-backend dev-frontend build build-backend build-frontend lint lint-frontend test test-backend docker-build clean
+.PHONY: dev dev-backend dev-frontend dev-backend-k8s dev-kind-up dev-kind-down build build-backend build-frontend lint lint-frontend test test-backend test-e2e docker-build clean
 
 UNAME_S := $(shell uname -s)
 BACKEND_DEV_GOFLAGS :=
 BACKEND_BUILD_ENV := CGO_ENABLED=0
 BACKEND_BUILD_GOFLAGS :=
+BACKEND_TEST_GOFLAGS :=
 
 ifeq ($(UNAME_S),Darwin)
 # Go 1.21.x can emit Mach-O binaries without LC_UUID on some macOS setups.
@@ -11,6 +12,7 @@ ifeq ($(UNAME_S),Darwin)
 BACKEND_DEV_GOFLAGS := -ldflags='-linkmode=external'
 BACKEND_BUILD_ENV :=
 BACKEND_BUILD_GOFLAGS := -ldflags='-linkmode=external'
+BACKEND_TEST_GOFLAGS := -ldflags='-linkmode=external'
 endif
 
 # Development
@@ -23,8 +25,17 @@ dev:
 dev-backend:
 	cd backend && LP_DEV_MODE=true go run $(BACKEND_DEV_GOFLAGS) ./cmd/server
 
+dev-backend-k8s:
+	cd backend && LP_DEV_MODE=false LP_DEFAULT_CLUSTER=kind-dev LP_KUBE_CLUSTERS='[{"name":"kind-dev","display_name":"Kind Dev","namespace":"lobsterpool-local","kubeconfig":"'"$$HOME"'/.kube/config","context":"kind-lobsterpool-dev"}]' go run $(BACKEND_DEV_GOFLAGS) ./cmd/server
+
 dev-frontend:
 	cd frontend && npm run dev
+
+dev-kind-up:
+	./scripts/dev-kind-up.sh lobsterpool-dev lobsterpool-local
+
+dev-kind-down:
+	./scripts/dev-kind-down.sh lobsterpool-dev
 
 # Build
 build: build-frontend build-backend
@@ -44,7 +55,10 @@ lint-frontend:
 test: test-backend
 
 test-backend:
-	cd backend && go test ./...
+	cd backend && go test $(BACKEND_TEST_GOFLAGS) ./...
+
+test-e2e:
+	cd frontend && npm run test:e2e
 
 # Docker
 docker-build:

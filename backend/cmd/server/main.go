@@ -25,7 +25,25 @@ func buildProvider(cfg *config.Config) (provider.Provider, error) {
 	}
 
 	log.Println("Using Kubernetes provider")
-	return provider.NewKubernetesProvider(cfg.Kubeconfig, cfg.Namespace)
+	if cfg.LegacySingleCluster {
+		return provider.NewLegacyKubernetesProvider(cfg.Kubeconfig, cfg.Namespace, cfg.DefaultCluster)
+	}
+
+	clusters := make([]provider.ClusterConfig, 0, len(cfg.KubeClusters))
+	for _, cluster := range cfg.KubeClusters {
+		clusters = append(clusters, provider.ClusterConfig{
+			Name:                  cluster.Name,
+			DisplayName:           cluster.DisplayName,
+			Namespace:             cluster.Namespace,
+			Kubeconfig:            cluster.Kubeconfig,
+			Context:               cluster.Context,
+			APIServer:             cluster.APIServer,
+			Token:                 cluster.Token,
+			CAFile:                cluster.CAFile,
+			InsecureSkipTLSVerify: cluster.InsecureSkipTLSVerify,
+		})
+	}
+	return provider.NewKubernetesProvider(clusters, cfg.DefaultCluster)
 }
 
 func setupStaticRoutes(r *gin.Engine, staticDir string) {
@@ -41,7 +59,10 @@ func setupStaticRoutes(r *gin.Engine, staticDir string) {
 }
 
 func main() {
-	cfg := config.Load()
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("Failed to load config: %v", err)
+	}
 
 	db, err := database.Open(cfg.DBPath)
 	if err != nil {
@@ -53,6 +74,10 @@ func main() {
 	instanceStore := models.NewInstanceStore(db)
 	userStore := models.NewUserStore(db)
 
+	if err := instanceStore.AssignDefaultCluster(cfg.DefaultCluster); err != nil {
+		log.Fatalf("Failed to backfill instance cluster: %v", err)
+	}
+
 	p, err := buildProvider(cfg)
 	if err != nil {
 		log.Fatalf("Failed to create provider: %v", err)
@@ -63,7 +88,8 @@ func main() {
 		Auth:     handler.NewAuthHandler(userStore, cfg.JWTSecret),
 		Admin:    handler.NewAdminHandler(userStore, templateStore, instanceStore),
 		Template: handler.NewTemplateHandler(templateStore),
-		Instance: handler.NewInstanceHandler(instanceStore, templateStore, userStore, p, cfg.Namespace),
+		Instance: handler.NewInstanceHandler(instanceStore, templateStore, userStore, p),
+		Cluster:  handler.NewClusterHandler(p),
 	}
 
 	r := router.Setup(handlers, cfg.JWTSecret, userStore)
