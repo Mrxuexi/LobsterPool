@@ -34,6 +34,16 @@ func TestAdminHandler_Overview(t *testing.T) {
 	h, userStore, instStore, _ := setupAdminHandler(t)
 
 	if err := userStore.Create(&models.User{
+		ID:           "admin-1",
+		Username:     "admin",
+		Role:         models.UserRoleAdmin,
+		MaxInstances: 0,
+		PasswordHash: "hash",
+	}); err != nil {
+		t.Fatalf("create admin: %v", err)
+	}
+
+	if err := userStore.Create(&models.User{
 		ID:           "user-1",
 		Username:     "alice",
 		Role:         models.UserRoleMember,

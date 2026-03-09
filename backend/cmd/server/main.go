@@ -46,6 +46,16 @@ func buildProvider(cfg *config.Config) (provider.Provider, error) {
 	return provider.NewKubernetesProvider(clusters, cfg.DefaultCluster)
 }
 
+func bootstrapAdminPassword(cfg *config.Config) string {
+	if cfg.BootstrapAdminPass != "" {
+		return cfg.BootstrapAdminPass
+	}
+	if cfg.DevMode {
+		return "admin"
+	}
+	return ""
+}
+
 func setupStaticRoutes(r *gin.Engine, staticDir string) {
 	if _, err := os.Stat(staticDir); err != nil {
 		return
@@ -69,6 +79,10 @@ func main() {
 		log.Fatalf("Failed to open database: %v", err)
 	}
 	defer db.Close()
+
+	if err := database.EnsureBootstrapAdminUser(db, cfg.BootstrapAdminUser, bootstrapAdminPassword(cfg)); err != nil {
+		log.Fatalf("Failed to bootstrap admin: %v", err)
+	}
 
 	templateStore := models.NewTemplateStore(db)
 	instanceStore := models.NewInstanceStore(db)

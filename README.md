@@ -118,12 +118,33 @@ E2E 测试会自动：
 
 ## 默认账号
 
-数据库迁移时会自动创建默认管理员：
+默认情况下，生产环境不会自动暴露弱口令管理员账号。
+
+开发模式下（`LP_DEV_MODE=true`），系统会为了本地联调便利自动提供一个 bootstrap 管理员：
 
 - 用户名：`admin`
 - 密码：`admin`
 
-首次使用后建议立即修改密码。该管理员会被强制设置为 `admin` 角色，默认不受实例数量限制。
+该账号首次登录后仍然会被强制修改密码。
+
+如果你要初始化首个管理员，请在首次启动时显式提供：
+
+```bash
+export LP_BOOTSTRAP_ADMIN_PASSWORD='change-me-now'
+```
+
+可选项：
+
+```bash
+export LP_BOOTSTRAP_ADMIN_USERNAME='admin'
+```
+
+当数据库里还没有任何管理员账号时，服务会用这组 bootstrap 凭据创建首个管理员，并强制该账号首次登录后修改密码。数据库里一旦已经存在管理员账号，后续重启不会再次重置管理员密码。
+
+规则总结：
+
+- `LP_DEV_MODE=true` 且未显式提供 bootstrap 密码时：默认使用 `admin/admin`
+- 非开发模式且未显式提供 bootstrap 密码时：不会自动创建管理员
 
 普通用户通过注册接口创建后，默认角色为 `member`，默认最多创建 `1` 个实例。
 
@@ -143,6 +164,8 @@ E2E 测试会自动：
 | `LP_DEV_MODE` | `false` | 设为 `true` 时使用 Mock Provider |
 | `LP_MOCK_PROVIDER` | 未设置 | 设为 `true` 时强制使用 Mock Provider |
 | `LP_JWT_SECRET` | `lobsterpool-dev-secret-change-me` | JWT 签名密钥 |
+| `LP_BOOTSTRAP_ADMIN_USERNAME` | `admin` | 首次 bootstrap 管理员用户名；仅在当前数据库没有管理员时生效 |
+| `LP_BOOTSTRAP_ADMIN_PASSWORD` | 未设置 | 首次 bootstrap 管理员密码；未设置时不会自动创建管理员 |
 
 ### 多集群配置示例
 

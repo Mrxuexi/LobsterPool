@@ -33,6 +33,8 @@ type Config struct {
 	StaticDir           string
 	DevMode             bool
 	JWTSecret           string
+	BootstrapAdminUser  string
+	BootstrapAdminPass  string
 }
 
 func Load() (*Config, error) {
@@ -44,6 +46,8 @@ func Load() (*Config, error) {
 		StaticDir:  getEnv("LP_STATIC_DIR", "./static"),
 		DevMode:    getEnv("LP_DEV_MODE", "false") == "true",
 		JWTSecret:  getEnv("LP_JWT_SECRET", "lobsterpool-dev-secret-change-me"),
+		BootstrapAdminUser: strings.TrimSpace(getEnv("LP_BOOTSTRAP_ADMIN_USERNAME", "admin")),
+		BootstrapAdminPass: strings.TrimSpace(os.Getenv("LP_BOOTSTRAP_ADMIN_PASSWORD")),
 	}
 
 	rawClusters := strings.TrimSpace(os.Getenv("LP_KUBE_CLUSTERS"))
