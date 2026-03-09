@@ -1,0 +1,32 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: lobsterpool
+  namespace: lobsterpool
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: lobsterpool
+  namespace: lobsterpool
+rules:
+  - apiGroups: [""]
+    resources: ["secrets", "services", "pods"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["create", "get", "list", "watch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: lobsterpool
+  namespace: lobsterpool
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: lobsterpool
+subjects:
+  - kind: ServiceAccount
+    name: lobsterpool
+    namespace: lobsterpool

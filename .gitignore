@@ -1,0 +1,17 @@
+.playwright-cli/
+frontend/.playwright-cli/
+backend/server
+bin/
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/.eslintcache
+frontend/*.tsbuildinfo
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
+lobsterpool.db
+lobsterpool.db-shm
+lobsterpool.db-wal
+*.bak
+.DS_Store

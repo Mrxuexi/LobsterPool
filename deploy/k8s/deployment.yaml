@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: lobsterpool
+  namespace: lobsterpool
+  labels:
+    app: lobsterpool
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: lobsterpool
+  template:
+    metadata:
+      labels:
+        app: lobsterpool
+    spec:
+      serviceAccountName: lobsterpool
+      containers:
+        - name: lobsterpool
+          image: lobsterpool:latest
+          ports:
+            - containerPort: 8080
+          env:
+            - name: LP_PORT
+              value: "8080"
+            - name: LP_NAMESPACE
+              value: lobsterpool
+            - name: LP_DB_PATH
+              value: /data/lobsterpool.db
+            - name: LP_STATIC_DIR
+              value: /static
+          volumeMounts:
+            - name: data
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /api/v1/health
+              port: 8080
+            initialDelaySeconds: 3
+            periodSeconds: 5
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: lobsterpool-data
